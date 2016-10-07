@@ -1,3 +1,0 @@
-[submodule "shaka/apktool/apktool"]
-	path = shaka/apktool/apktool
-	url = https://github.com/iBotPeaches/Apktool.git
