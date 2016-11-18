@@ -165,7 +165,7 @@ public class Androlib {
                         if (ext.isEmpty()) {
                             ext = file;
                         }
-                        if (! uncompressedFilesOrExts.contains(ext) && (!isRecordAssets || ext.startsWith("assets"))) {
+                        if (! uncompressedFilesOrExts.contains(ext) && (isRecordAssets || !ext.startsWith("assets"))) {
                             uncompressedFilesOrExts.add(ext);
                         }
                     }
