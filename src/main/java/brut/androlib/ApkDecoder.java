@@ -161,7 +161,7 @@ public class ApkDecoder {
         mAndrolib.decodeRawFiles(mApkFile, outDir, mDecodeAssets);
         mAndrolib.decodeUnknownFiles(mApkFile, outDir, mResTable);
         mUncompressedFiles = new ArrayList<String>();
-        mAndrolib.recordUncompressedFiles(mApkFile, mUncompressedFiles);
+        mAndrolib.recordUncompressedFiles(mApkFile, mUncompressedFiles, mDecodeAssets);
         mAndrolib.writeOriginalFiles(mApkFile, outDir);
         writeMetaFile();
     }
