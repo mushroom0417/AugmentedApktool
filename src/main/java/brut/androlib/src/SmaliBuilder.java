@@ -21,12 +21,15 @@ import brut.androlib.mod.SmaliMod;
 import brut.androlib.res.util.ExtFile;
 import brut.directory.DirectoryException;
 import java.io.*;
+import java.lang.reflect.Field;
 import java.util.List;
+import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
 
 import org.antlr.runtime.RecognitionException;
 import org.apache.commons.io.IOUtils;
 import org.jf.dexlib2.Opcodes;
+import org.jf.dexlib2.writer.DexWriter;
 import org.jf.dexlib2.writer.builder.DexBuilder;
 import org.jf.dexlib2.writer.io.FileDataStore;
 
@@ -48,6 +51,8 @@ public class SmaliBuilder {
         mApiLevel = apiLevel;
     }
 
+    private ConcurrentMap mInternedItems;
+
     private void build() throws AndrolibException {
         try {
             DexBuilder dexBuilder;
@@ -57,8 +62,21 @@ public class SmaliBuilder {
                 dexBuilder = DexBuilder.makeDexBuilder();
             }
 
+            try {
+                Field methodSectionFiled = DexWriter.class.getDeclaredField("methodSection");
+                methodSectionFiled.setAccessible(true);
+                Object methodSection = methodSectionFiled.get(dexBuilder);
+                Class builderMethodPoolClass = Class.forName("org.jf.dexlib2.writer.builder.BuilderMethodPool");
+                Field internedItemsField = builderMethodPoolClass.getDeclaredField("internedItems");
+                internedItemsField.setAccessible(true);
+                mInternedItems = (ConcurrentMap) internedItemsField.get(methodSection);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
             for (String fileName : mSmaliDir.getDirectory().getFiles(true)) {
                 buildFile(fileName, dexBuilder);
+                LOGGER.info("parse fileName, now method count is " + mInternedItems.values().size());
             }
             dexBuilder.writeTo(new FileDataStore( new File(mDexFile.getAbsolutePath())));
         } catch (IOException | DirectoryException ex) {
