@@ -110,7 +110,6 @@ public class SmaliBuilder {
                         Pattern pattern = Pattern.compile(includeRegex);
                         for (String fileName : files) {
                             if (pattern.matcher(fileName).matches()) {
-                                LOGGER.info("add " + fileName + " in dex" + dexCount);
                                 dexFiles.add(fileName);
                                 buildFile(fileName, dexBuilder);
                                 if (mInternedItems.values().size() >= MAX_METHOD_CUSTOM) {
@@ -119,6 +118,11 @@ public class SmaliBuilder {
                                 }
                             }
                         }
+
+                        for (String s : dexFiles) {
+                            files.remove(s);
+                        }
+                        dexFiles.clear();
                     }
 
                     if (!isOutOfDex) {
@@ -128,7 +132,6 @@ public class SmaliBuilder {
                             Pattern pattern = Pattern.compile(suggestRegex);
                             for (String fileName : files) {
                                 if (pattern.matcher(fileName).matches()) {
-                                    LOGGER.info("add " + fileName + " in dex" + dexCount);
                                     dexFiles.add(fileName);
                                     buildFile(fileName, dexBuilder);
                                     if (mInternedItems.values().size() >= MAX_METHOD_CUSTOM) {
@@ -137,6 +140,11 @@ public class SmaliBuilder {
                                     }
                                 }
                             }
+
+                            for (String s : dexFiles) {
+                                files.remove(s);
+                            }
+                            dexFiles.clear();
                         }
                     }
                 }
@@ -150,13 +158,14 @@ public class SmaliBuilder {
                             break;
                         }
                     }
+                    for (String s : dexFiles) {
+                        files.remove(s);
+                    }
+                    dexFiles.clear();
                 }
                 LOGGER.info("parse fileName, now method count is " + mInternedItems.values().size());
                 if (isOutOfDex) {
                     LOGGER.info("dex" + dexCount + "'s methods is over " + MAX_METHOD_CUSTOM + " and should be broken up");
-                    for (String s : dexFiles) {
-                        files.remove(s);
-                    }
                     dexCount++;
                     File nextDexFile;
                     if (dexCount > 1) {
