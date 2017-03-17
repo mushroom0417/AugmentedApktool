@@ -22,6 +22,7 @@ public class ApkOptions {
     public boolean verbose = false;
     public boolean noAssets = false;
     public boolean autoMultiDex = false;
+    public String mainDexConfig = "";
     public boolean copyOriginalFiles = false;
     public boolean updateFiles = false;
     public boolean isFramework = false;

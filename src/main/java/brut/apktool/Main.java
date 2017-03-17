@@ -221,6 +221,7 @@ public class Main {
         }
         if (cli.hasOption("am") || cli.hasOption("auto-multidex")) {
             apkOptions.autoMultiDex = true;
+            apkOptions.mainDexConfig = cli.getOptionValue("am");
         }
         if (cli.hasOption("a") || cli.hasOption("aapt")) {
             apkOptions.aaptPath = cli.getOptionValue("a");
@@ -285,7 +286,9 @@ public class Main {
                 .create("na");
 
         Option autoMultiDexOption = OptionBuilder.withLongOpt("auto-multidex")
-                .withDescription("Build multidex automatically when over 64k methods")
+                .withDescription("Build multidex automatically when over 64k methods. Please Configure mainDex smali in <file>")
+                .hasArg(true)
+                .withArgName("file")
                 .create("am");
 
         Option advanceOption = OptionBuilder.withLongOpt("advanced")

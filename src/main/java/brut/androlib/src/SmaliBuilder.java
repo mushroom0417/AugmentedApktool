@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import org.antlr.runtime.RecognitionException;
 import org.apache.commons.io.IOUtils;
@@ -48,26 +49,27 @@ public class SmaliBuilder {
         new SmaliBuilder(smaliDir, dexFile, 0).build();
     }
 
-    public static void build(ExtFile smaliDir, File dexFile, boolean autoMultiDex) throws AndrolibException {
-        new SmaliBuilder(smaliDir, dexFile, 0, autoMultiDex).build();
+    public static void build(ExtFile smaliDir, File dexFile, boolean autoMultiDex, String mainDexConfigPath) throws AndrolibException {
+        new SmaliBuilder(smaliDir, dexFile, 0, autoMultiDex, mainDexConfigPath).build();
     }
 
     private SmaliBuilder(ExtFile smaliDir, File dexFile, int apiLevel) {
-        this(smaliDir, dexFile, apiLevel, false);
+        this(smaliDir, dexFile, apiLevel, false, null);
     }
 
-    private SmaliBuilder(ExtFile smaliDir, File dexFile, int apiLevel, boolean autoMultiDex) {
+    private SmaliBuilder(ExtFile smaliDir, File dexFile, int apiLevel, boolean autoMultiDex, String mainDexFilePath) {
         mSmaliDir = smaliDir;
         mDexFile = dexFile;
         mApiLevel = apiLevel;
         mAutoMultiDex = autoMultiDex;
+        mMainDexFilePath = mainDexFilePath;
     }
 
     private ConcurrentMap mInternedItems;
 
     private void build() throws AndrolibException {
         try {
-            build(mSmaliDir.getDirectory().getFiles(true), 0);
+            build(mSmaliDir.getDirectory().getFiles(true), 1);
         } catch (DirectoryException ex) {
             throw new AndrolibException(ex);
         }
@@ -99,12 +101,34 @@ public class SmaliBuilder {
                 int MAX_METHOD_CUSTOM = 60000;
                 boolean isOutOfDex = false;
                 List<String> dexFiles = new ArrayList<>();
-                for (String fileName : files) {
-                    buildFile(fileName, dexBuilder);
-                    dexFiles.add(fileName);
-                    if (mInternedItems.values().size() >= MAX_METHOD_CUSTOM) {
-                        isOutOfDex = true;
-                        break;
+
+                if (mMainDexFilePath != null && !mMainDexFilePath.isEmpty()) {
+                    //先处理一次main-dex-file
+                    String regex = MainDexConfigParser.getMainDexFilesRegex(mMainDexFilePath);
+                    if (regex != null && !regex.isEmpty()) {
+                        Pattern pattern = Pattern.compile(regex);
+                        for (String fileName : files) {
+                            if (pattern.matcher(fileName).matches()) {
+                                LOGGER.info("add " + fileName + " in dex" + dexCount);
+                                dexFiles.add(fileName);
+                                buildFile(fileName, dexBuilder);
+                                if (mInternedItems.values().size() >= MAX_METHOD_CUSTOM) {
+                                    isOutOfDex = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!isOutOfDex) {
+                    for (String fileName : files) {
+                        buildFile(fileName, dexBuilder);
+                        dexFiles.add(fileName);
+                        if (mInternedItems.values().size() >= MAX_METHOD_CUSTOM) {
+                            isOutOfDex = true;
+                            break;
+                        }
                     }
                 }
                 LOGGER.info("parse fileName, now method count is " + mInternedItems.values().size());
@@ -115,12 +139,12 @@ public class SmaliBuilder {
                     }
                     dexCount++;
                     File nextDexFile;
-                    if (dexCount != 0) {
+                    if (dexCount > 1) {
                         nextDexFile = new File(mDexFile.getParent() + File.separator + "classes" + dexCount + ".dex");
                     } else {
                         throw new AndrolibException("dexFile getName error");
                     }
-                    new SmaliBuilder(mSmaliDir, nextDexFile, 0, mAutoMultiDex).build(files, dexCount);
+                    new SmaliBuilder(mSmaliDir, nextDexFile, 0, mAutoMultiDex, null).build(files, dexCount);
                 }
             } else {
                 //原有流程
@@ -130,7 +154,7 @@ public class SmaliBuilder {
             }
 
             dexBuilder.writeTo(new FileDataStore(new File(mDexFile.getAbsolutePath())));
-        } catch (IOException | DirectoryException ex) {
+        } catch (Exception ex) {
             throw new AndrolibException(ex);
         }
     }
@@ -158,6 +182,7 @@ public class SmaliBuilder {
     private final File mDexFile;
     private int mApiLevel = 0;
     private boolean mAutoMultiDex;
+    private String mMainDexFilePath;
 
     private final static Logger LOGGER = Logger.getLogger(SmaliBuilder.class.getName());
 }
