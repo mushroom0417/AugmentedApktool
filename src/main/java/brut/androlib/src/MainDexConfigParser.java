@@ -6,6 +6,7 @@ import java.io.FileReader;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Created by changye.zeng on 17/3/17.
@@ -14,11 +15,17 @@ import java.util.Set;
 public class MainDexConfigParser {
     private static final String SMALI_TYPE = ".smali";
     private static final String ANY_SMALI = "**";
+    private static final String SMALI_SUGGEST = "-suggest";
 
-    public static String getMainDexFilesRegex(String path) throws Exception {
-        Set<String> files = getMainDexFiles(path);
+    private Set<String> includeFilesSet;
+    private Set<String> suggestFilesSet;
+
+    public String getIncludeFilesRegex() {
+        if (includeFilesSet == null || includeFilesSet.isEmpty()) {
+            return "";
+        }
         StringBuilder sb = new StringBuilder();
-        Iterator<String> iterator = files.iterator();
+        Iterator<String> iterator = includeFilesSet.iterator();
         if (iterator.hasNext()) {
             sb.append(iterator.next());
         }
@@ -29,8 +36,25 @@ public class MainDexConfigParser {
         return sb.toString();
     }
 
-    private static Set<String> getMainDexFiles(String path) throws Exception {
-        Set<String> files = new HashSet<>();
+    public String getSuggestFilesRegex() {
+        if (suggestFilesSet == null || suggestFilesSet.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder();
+        Iterator<String> iterator = suggestFilesSet.iterator();
+        if (iterator.hasNext()) {
+            sb.append(iterator.next());
+        }
+        while (iterator.hasNext()) {
+            sb.append("|");
+            sb.append(iterator.next());
+        }
+        return sb.toString();
+    }
+
+    public void parseMainDexFiles(String path) throws Exception {
+        includeFilesSet = new HashSet<>();
+        suggestFilesSet = new HashSet<>();
         File configFile = new File(path);
 
         BufferedReader reader = new BufferedReader(new FileReader(configFile));
@@ -53,20 +77,39 @@ public class MainDexConfigParser {
 
             String classPath = line.trim();
             if (classPath.length() > 0) {
+                boolean isMatchSuggest = false;
+                if (matchCommand(classPath, SMALI_SUGGEST)) {
+                    isMatchSuggest = true;
+                    classPath = classPath.substring(SMALI_SUGGEST.length(), classPath.length());
+                } else {
+                    isMatchSuggest = false;
+                }
                 classPath = classPath.trim();
                 if (classPath.endsWith(SMALI_TYPE)) {
                     classPath = classPath.substring(0, classPath.length() - SMALI_TYPE.length())
                             .replace('.', '/') + "\\.smali";
-                    files.add(classPath);
+                    if (isMatchSuggest) {
+                        suggestFilesSet.add(classPath);
+                    } else {
+                        includeFilesSet.add(classPath);
+                    }
                 } else if (classPath.endsWith(ANY_SMALI)) {
                     String dirPath = classPath.substring(0, classPath.length() - ANY_SMALI.length())
                             .replace('.', '/')
                             + ".*\\.smali";
-                    files.add(dirPath);
+                    if (isMatchSuggest) {
+                        suggestFilesSet.add(dirPath);
+                    } else {
+                        includeFilesSet.add(dirPath);
+                    }
                 }
             }
         }
         reader.close();
-        return files;
+    }
+
+    private boolean matchCommand(String text, String cmd) {
+        Pattern pattern = Pattern.compile("^" + cmd + "\\s+");
+        return pattern.matcher(text).find();
     }
 }

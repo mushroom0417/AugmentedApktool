@@ -42,6 +42,12 @@ import org.apache.commons.cli.PosixParser;
  */
 public class Main {
     public static void main(String[] args) throws IOException, InterruptedException, BrutException {
+//        args = new String[] {
+//                "b",
+//                "-am",
+//                "config.txt",
+//                "app-Debug"
+//        };
 
         // set verbosity default
         Verbosity verbosity = Verbosity.NORMAL;

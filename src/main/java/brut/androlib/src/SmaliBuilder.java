@@ -31,7 +31,6 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import org.antlr.runtime.RecognitionException;
-import org.apache.commons.io.IOUtils;
 import org.jf.dexlib2.Opcodes;
 import org.jf.dexlib2.writer.DexWriter;
 import org.jf.dexlib2.writer.builder.DexBuilder;
@@ -103,10 +102,12 @@ public class SmaliBuilder {
                 List<String> dexFiles = new ArrayList<>();
 
                 if (mMainDexFilePath != null && !mMainDexFilePath.isEmpty()) {
+                    MainDexConfigParser parser = new MainDexConfigParser();
+                    parser.parseMainDexFiles(mMainDexFilePath);
                     //先处理一次main-dex-file
-                    String regex = MainDexConfigParser.getMainDexFilesRegex(mMainDexFilePath);
-                    if (regex != null && !regex.isEmpty()) {
-                        Pattern pattern = Pattern.compile(regex);
+                    String includeRegex = parser.getIncludeFilesRegex();
+                    if (includeRegex != null && !includeRegex.isEmpty()) {
+                        Pattern pattern = Pattern.compile(includeRegex);
                         for (String fileName : files) {
                             if (pattern.matcher(fileName).matches()) {
                                 LOGGER.info("add " + fileName + " in dex" + dexCount);
@@ -115,6 +116,25 @@ public class SmaliBuilder {
                                 if (mInternedItems.values().size() >= MAX_METHOD_CUSTOM) {
                                     isOutOfDex = true;
                                     break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!isOutOfDex) {
+                        // 处理suggest
+                        String suggestRegex = parser.getSuggestFilesRegex();
+                        if (suggestRegex != null && !suggestRegex.isEmpty()) {
+                            Pattern pattern = Pattern.compile(suggestRegex);
+                            for (String fileName : files) {
+                                if (pattern.matcher(fileName).matches()) {
+                                    LOGGER.info("add " + fileName + " in dex" + dexCount);
+                                    dexFiles.add(fileName);
+                                    buildFile(fileName, dexBuilder);
+                                    if (mInternedItems.values().size() >= MAX_METHOD_CUSTOM) {
+                                        isOutOfDex = true;
+                                        break;
+                                    }
                                 }
                             }
                         }
