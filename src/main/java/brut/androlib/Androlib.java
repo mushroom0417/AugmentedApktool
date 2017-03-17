@@ -361,7 +361,7 @@ public class Androlib {
         if (apkOptions.forceBuildAll || isModified(smaliDir, dex)) {
             LOGGER.info("Smaling " + folder + " folder into " + filename +"...");
             dex.delete();
-            SmaliBuilder.build(smaliDir, dex);
+            SmaliBuilder.build(smaliDir, dex, apkOptions.autoMultiDex);
         }
         return true;
     }

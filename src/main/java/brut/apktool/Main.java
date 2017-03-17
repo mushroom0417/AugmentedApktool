@@ -219,6 +219,9 @@ public class Main {
         if (cli.hasOption("na") || cli.hasOption("no-assets")) {
             apkOptions.noAssets = true;
         }
+        if (cli.hasOption("am") || cli.hasOption("auto-multidex")) {
+            apkOptions.autoMultiDex = true;
+        }
         if (cli.hasOption("a") || cli.hasOption("aapt")) {
             apkOptions.aaptPath = cli.getOptionValue("a");
         }
@@ -280,6 +283,10 @@ public class Main {
         Option assetsOption = OptionBuilder.withLongOpt("no-assets")
                 .withDescription("Do not decode assets")
                 .create("na");
+
+        Option autoMultiDexOption = OptionBuilder.withLongOpt("auto-multidex")
+                .withDescription("Build multidex automatically when over 64k methods")
+                .create("am");
 
         Option advanceOption = OptionBuilder.withLongOpt("advanced")
                 .withDescription("prints advance information.")
@@ -413,6 +420,7 @@ public class Main {
         BuildOptions.addOption(outputBuiOption);
         BuildOptions.addOption(frameDirOption);
         BuildOptions.addOption(forceBuiOption);
+        BuildOptions.addOption(autoMultiDexOption);
 
         // add basic framework options
         frameOptions.addOption(tagOption);
