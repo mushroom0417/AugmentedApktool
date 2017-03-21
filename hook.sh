@@ -7,6 +7,7 @@ cp -f src/main/java/brut/androlib/res/AndrolibResources.java apktool/brut.apktoo
 cp -f src/main/java/brut/androlib/src/SmaliBuilder.java apktool/brut.apktool/apktool-lib/src/main/java/brut/androlib/src/SmaliBuilder.java
 cp -f src/main/java/brut/androlib/src/MainDexConfigParser.java apktool/brut.apktool/apktool-lib/src/main/java/brut/androlib/src/MainDexConfigParser.java
 cp -f src/main/java/brut/apktool/Main.java apktool/brut.apktool/apktool-cli/src/main/java/brut/apktool/Main.java
+cp -f src/main/java/brut/util/OS.java apktool/brut.j.util/src/main/java/brut/util/OS.java
 
 echo "构建jar"
 cd apktool
@@ -26,6 +27,8 @@ if [ "$1" = "-r" ]; then
     git checkout -- brut.apktool/apktool-lib/src/main/java/brut/androlib/src/SmaliBuilder.java
     git checkout -- brut.apktool/apktool-lib/src/main/java/brut/androlib/src/MainDexConfigParser.java
     git checkout -- brut.apktool/apktool-cli/src/main/java/brut/apktool/Main.java
+    git checkout -- apktool/brut.j.util/src/main/java/brut/util/OS.java
+
     cd ..
 fi
 
