@@ -238,6 +238,9 @@ public class Main {
         if (cli.hasOption("p") || cli.hasOption("frame-path")) {
             apkOptions.frameworkFolderLocation = cli.getOptionValue("p");
         }
+        if (cli.hasOption("u") || cli.hasOption("update")) {
+            apkOptions.updateFiles = true;
+        }
         if (cli.hasOption("o") || cli.hasOption("output")) {
             outFile = new File(cli.getOptionValue("o"));
         } else {
@@ -398,6 +401,9 @@ public class Main {
         Option verboseOption = OptionBuilder.withLongOpt("verbose")
                 .create("v");
 
+        Option updateOption = OptionBuilder.withLongOpt("update")
+                .create("u");
+
         // check for advance mode
         if (isAdvanceMode()) {
             DecodeOptions.addOption(debugDecOption);
@@ -430,6 +436,7 @@ public class Main {
         BuildOptions.addOption(frameDirOption);
         BuildOptions.addOption(forceBuiOption);
         BuildOptions.addOption(autoMultiDexOption);
+        BuildOptions.addOption(updateOption);
 
         // add basic framework options
         frameOptions.addOption(tagOption);
