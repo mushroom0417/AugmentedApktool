@@ -342,6 +342,7 @@ final public class AndrolibResources {
         }
         if (apkOptions.updateFiles) {
             cmd.add("-u");
+            cmd.add("-f");
         }
         // force package id so that some frameworks build with correct id
         // disable if user adds own aapt (can't know if they have this feature)
