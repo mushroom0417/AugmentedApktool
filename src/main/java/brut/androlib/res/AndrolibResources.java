@@ -1,5 +1,6 @@
 /**
- *  Copyright 2014 Ryszard Wiśniewski <brut.alll@gmail.com>
+ *  Copyright (C) 2018 Ryszard Wiśniewski <brut.alll@gmail.com>
+ *  Copyright (C) 2018 Connor Tumbleson <connor.tumbleson@gmail.com>
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -13,19 +14,19 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package brut.androlib.res;
 
 import brut.androlib.AndrolibException;
 import brut.androlib.ApkOptions;
 import brut.androlib.err.CantFindFrameworkResException;
+import brut.androlib.meta.MetaInfo;
 import brut.androlib.meta.PackageInfo;
 import brut.androlib.meta.VersionInfo;
 import brut.androlib.res.data.*;
 import brut.androlib.res.decoder.*;
 import brut.androlib.res.decoder.ARSCDecoder.ARSCData;
 import brut.androlib.res.decoder.ARSCDecoder.FlagsOffset;
-import brut.androlib.res.util.ExtFile;
+import brut.directory.ExtFile;
 import brut.androlib.res.util.ExtMXSerializer;
 import brut.androlib.res.util.ExtXmlSerializer;
 import brut.androlib.res.xml.ResValuesXmlSerializable;
@@ -101,7 +102,7 @@ final public class AndrolibResources {
     }
 
     public ResPackage selectPkgWithMostResSpecs(ResPackage[] pkgs)
-        throws AndrolibException {
+            throws AndrolibException {
         int id = 0;
         int value = 0;
 
@@ -121,7 +122,8 @@ final public class AndrolibResources {
         File apk = getFrameworkApk(id, frameTag);
 
         LOGGER.info("Loading resource table from file: " + apk);
-        ResPackage[] pkgs = getResPackagesFromApk(new ExtFile(apk), resTable, true);
+        mFramework = new ExtFile(apk);
+        ResPackage[] pkgs = getResPackagesFromApk(mFramework, resTable, true);
 
         ResPackage pkg;
         if (pkgs.length > 1) {
@@ -182,7 +184,7 @@ final public class AndrolibResources {
         // 2a) If its ignored, make sure the mPackageRenamed isn't explicitly allowed
         if (packageOriginal.equalsIgnoreCase(mPackageRenamed) ||
                 (Arrays.asList(IGNORED_PACKAGES).contains(packageOriginal) &&
-                ! Arrays.asList(ALLOWED_PACKAGES).contains(mPackageRenamed))) {
+                        ! Arrays.asList(ALLOWED_PACKAGES).contains(mPackageRenamed))) {
             LOGGER.info("Regular manifest package...");
         } else {
             LOGGER.info("Renamed manifest package found! Replacing " + mPackageRenamed + " with " + packageOriginal);
@@ -239,10 +241,16 @@ final public class AndrolibResources {
             out = new FileDirectory(outDir);
 
             inApk = apkFile.getDirectory();
+            out = out.createDir("res");
             if (inApk.containsDir("res")) {
                 in = inApk.getDir("res");
             }
-            out = out.createDir("res");
+            if (in == null && inApk.containsDir("r")) {
+                in = inApk.getDir("r");
+            }
+            if (in == null && inApk.containsDir("R")) {
+                in = inApk.getDir("R");
+            }
         } catch (DirectoryException ex) {
             throw new AndrolibException(ex);
         }
@@ -300,6 +308,17 @@ final public class AndrolibResources {
         mSharedLibrary = flag;
     }
 
+    public String checkTargetSdkVersionBounds() {
+        int target = mapSdkShorthandToVersion(mTargetSdkVersion);
+
+        int min = (mMinSdkVersion != null) ? mapSdkShorthandToVersion(mMinSdkVersion) : 0;
+        int max = (mMaxSdkVersion != null) ? mapSdkShorthandToVersion(mMaxSdkVersion) : target;
+
+        target = Math.min(max, target);
+        target = Math.max(min, target);
+        return Integer.toString(target);
+    }
+
     public void aaptPackage(File apkFile, File manifest, File resDir, File rawDir, File assetDir, File[] include)
             throws AndrolibException {
 
@@ -344,6 +363,9 @@ final public class AndrolibResources {
             cmd.add("-u");
             cmd.add("-f");
         }
+        if (apkOptions.debugMode) { // inject debuggable="true" into manifest
+            cmd.add("--debug-mode");
+        }
         // force package id so that some frameworks build with correct id
         // disable if user adds own aapt (can't know if they have this feature)
         if (mPackageId != null && ! customAapt && ! mSharedLibrary) {
@@ -359,7 +381,10 @@ final public class AndrolibResources {
         }
         if (mTargetSdkVersion != null) {
             cmd.add("--target-sdk-version");
-            cmd.add(mTargetSdkVersion);
+
+            // Ensure that targetSdkVersion is between minSdkVersion/maxSdkVersion if
+            // they are specified.
+            cmd.add(checkTargetSdkVersionBounds());
         }
         if (mMaxSdkVersion != null) {
             cmd.add("--max-sdk-version");
@@ -382,6 +407,7 @@ final public class AndrolibResources {
             cmd.add("--version-name");
             cmd.add(mVersionName);
         }
+        cmd.add("--no-version-vectors");
         cmd.add("--ignore-assets");
         cmd.add("!.svn:!.git:!*.ds_store:!*.scc:*__MACOSX*:<dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~");
         cmd.add("-F");
@@ -423,7 +449,6 @@ final public class AndrolibResources {
         if (rawDir != null) {
             cmd.add(rawDir.getAbsolutePath());
         }
-        
         try {
             OS.exec(cmd.toArray(new String[0]));
             if (apkOptions.verbose) {
@@ -432,6 +457,28 @@ final public class AndrolibResources {
             }
         } catch (BrutException ex) {
             throw new AndrolibException(ex);
+        }
+    }
+
+    public int getMinSdkVersionFromAndroidCodename(MetaInfo meta, String sdkVersion) {
+        int sdkNumber = mapSdkShorthandToVersion(sdkVersion);
+
+        if (sdkNumber == ResConfigFlags.SDK_BASE) {
+            return Integer.parseInt(meta.sdkInfo.get("minSdkVersion"));
+        }
+        return sdkNumber;
+    }
+
+    private int mapSdkShorthandToVersion(String sdkVersion) {
+        switch (sdkVersion) {
+            case "M":
+                return ResConfigFlags.SDK_MNC;
+            case "N":
+                return ResConfigFlags.SDK_NOUGAT;
+            case "O":
+                return ResConfigFlags.SDK_OREO;
+            default:
+                return Integer.parseInt(sdkVersion);
         }
     }
 
@@ -549,8 +596,15 @@ final public class AndrolibResources {
     private ResPackage[] getResPackagesFromApk(ExtFile apkFile,ResTable resTable, boolean keepBroken)
             throws AndrolibException {
         try {
-            BufferedInputStream bfi = new BufferedInputStream(apkFile.getDirectory().getFileInput("resources.arsc"));
-            return ARSCDecoder.decode(bfi, false, keepBroken, resTable).getPackages();
+            Directory dir = apkFile.getDirectory();
+            BufferedInputStream bfi = new BufferedInputStream(dir.getFileInput("resources.arsc"));
+            try {
+                return ARSCDecoder.decode(bfi, false, keepBroken, resTable).getPackages();
+            } finally {
+                try {
+                    bfi.close();
+                } catch (IOException ignored) {}
+            }
         } catch (DirectoryException ex) {
             throw new AndrolibException("Could not load resources.arsc from file: " + apkFile, ex);
         }
@@ -584,6 +638,32 @@ final public class AndrolibResources {
         }
 
         throw new CantFindFrameworkResException(id);
+    }
+
+    public void emptyFrameworkDirectory() throws AndrolibException {
+        File dir = getFrameworkDir();
+        File apk;
+
+        apk = new File(dir, "1.apk");
+
+        if (! apk.exists()) {
+            LOGGER.warning("Can't empty framework directory, no file found at: " + apk.getAbsolutePath());
+        } else {
+            try {
+                if (apk.exists() && dir.listFiles().length > 1 && ! apkOptions.forceDeleteFramework) {
+                    LOGGER.warning("More than default framework detected. Please run command with `--force` parameter to wipe framework directory.");
+                } else {
+                    for (File file : dir.listFiles()) {
+                        if (file.isFile() && file.getName().endsWith(".apk")) {
+                            LOGGER.info("Removing " + file.getName() + " framework file...");
+                            file.delete();
+                        }
+                    }
+                }
+            } catch (NullPointerException e) {
+                throw new AndrolibException(e);
+            }
+        }
     }
 
     public void installFramework(File frameFile) throws AndrolibException {
@@ -622,6 +702,23 @@ final public class AndrolibResources {
             entry.setCrc(crc.getValue());
             out.putNextEntry(entry);
             out.write(data);
+            out.closeEntry();
+
+            //Write fake AndroidManifest.xml file to support original aapt
+            entry = zip.getEntry("AndroidManifest.xml");
+            if (entry != null) {
+                in = zip.getInputStream(entry);
+                byte[] manifest = IOUtils.toByteArray(in);
+                CRC32 manifestCrc = new CRC32();
+                manifestCrc.update(manifest);
+                entry.setSize(manifest.length);
+                entry.setCompressedSize(-1);
+                entry.setCrc(manifestCrc.getValue());
+                out.putNextEntry(entry);
+                out.write(manifest);
+                out.closeEntry();
+            }
+
             zip.close();
             LOGGER.info("Framework installed to: " + outFile);
         } catch (IOException ex) {
@@ -661,7 +758,7 @@ final public class AndrolibResources {
         }
     }
 
-    private File getFrameworkDir() throws AndrolibException {
+    public File getFrameworkDir() throws AndrolibException {
         if (mFrameworkDirectory != null) {
             return mFrameworkDirectory;
         }
@@ -673,27 +770,35 @@ final public class AndrolibResources {
             path = apkOptions.frameworkFolderLocation;
         } else {
             File parentPath = new File(System.getProperty("user.home"));
-            if (! parentPath.canWrite()) {
-                LOGGER.severe(String.format("WARNING: Could not write to $HOME (%s), using %s instead...",
-                        parentPath.getAbsolutePath(), System.getProperty("java.io.tmpdir")));
-                LOGGER.severe("Please be aware this is a volatile directory and frameworks could go missing, " +
-                        "please utilize --frame-path if the default storage directory is unavailable");
-
-                parentPath = new File(System.getProperty("java.io.tmpdir"));
-            }
 
             if (OSDetection.isMacOSX()) {
                 path = parentPath.getAbsolutePath() + String.format("%1$sLibrary%1$sapktool%1$sframework", File.separatorChar);
+            } else if (OSDetection.isWindows()) {
+                path = parentPath.getAbsolutePath() + String.format("%1$sAppData%1$sLocal%1$sapktool%1$sframework", File.separatorChar);
             } else {
-                path = parentPath.getAbsolutePath() + String.format("%1$sapktool%1$sframework", File.separatorChar);
+                path = parentPath.getAbsolutePath() + String.format("%1$s.local%1$sshare%1$sapktool%1$sframework", File.separatorChar);
+            }
+
+            File fullPath = new File(path);
+
+            if (! fullPath.canWrite()) {
+                LOGGER.severe(String.format("WARNING: Could not write to (%1$s), using %2$s instead...",
+                        fullPath.getAbsolutePath(), System.getProperty("java.io.tmpdir")));
+                LOGGER.severe("Please be aware this is a volatile directory and frameworks could go missing, " +
+                        "please utilize --frame-path if the default storage directory is unavailable");
+
+                path = new File(System.getProperty("java.io.tmpdir")).getAbsolutePath();
             }
         }
 
         File dir = new File(path);
 
+        if (!dir.isDirectory() && dir.isFile()) {
+            throw new AndrolibException("--frame-path is set to a file, not a directory.");
+        }
+
         if (dir.getParentFile() != null && dir.getParentFile().isFile()) {
-            LOGGER.severe("Please remove file at " + dir.getParentFile());
-            System.exit(1);
+            throw new AndrolibException("Please remove file at " + dir.getParentFile());
         }
 
         if (! dir.exists()) {
@@ -721,13 +826,17 @@ final public class AndrolibResources {
     public File getAaptBinaryFile() throws AndrolibException {
         File aaptBinary;
 
+        if (! OSDetection.is64Bit() && ! OSDetection.isWindows()) {
+            throw new AndrolibException("32 bit OS detected. No 32 bit binaries available.");
+        }
+
         try {
             if (OSDetection.isMacOSX()) {
-                aaptBinary = Jar.getResourceAsFile("/prebuilt/aapt/macosx/aapt");
+                aaptBinary = Jar.getResourceAsFile("/prebuilt/aapt/macosx/aapt", AndrolibResources.class);
             } else if (OSDetection.isUnix()) {
-                aaptBinary = Jar.getResourceAsFile("/prebuilt/aapt/linux/aapt");
+                aaptBinary = Jar.getResourceAsFile("/prebuilt/aapt/linux/aapt", AndrolibResources.class);
             } else if (OSDetection.isWindows()) {
-                aaptBinary = Jar.getResourceAsFile("/prebuilt/aapt/windows/aapt.exe");
+                aaptBinary = Jar.getResourceAsFile("/prebuilt/aapt/windows/aapt.exe", AndrolibResources.class);
             } else {
                 LOGGER.warning("Unknown Operating System: " + OSDetection.returnOS());
                 return null;
@@ -751,6 +860,12 @@ final public class AndrolibResources {
         }
     }
 
+    public void close() throws IOException {
+        if (mFramework != null) {
+            mFramework.close();
+        }
+    }
+
     public ApkOptions apkOptions;
 
     // TODO: dirty static hack. I have to refactor decoding mechanisms.
@@ -759,6 +874,8 @@ final public class AndrolibResources {
     private final static Logger LOGGER = Logger.getLogger(AndrolibResources.class.getName());
 
     private File mFrameworkDirectory = null;
+
+    private ExtFile mFramework = null;
 
     private String mMinSdkVersion = null;
     private String mMaxSdkVersion = null;
@@ -771,7 +888,8 @@ final public class AndrolibResources {
     private boolean mSharedLibrary = false;
 
     private final static String[] IGNORED_PACKAGES = new String[] {
-            "android", "com.htc", "miui", "com.lge", "com.lge.internal", "yi", "com.miui.core", "flyme"};
+            "android", "com.htc", "miui", "com.lge", "com.lge.internal", "yi", "com.miui.core", "flyme",
+            "air.com.adobe.appentry" };
 
     private final static String[] ALLOWED_PACKAGES = new String[] {
             "com.miui" };

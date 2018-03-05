@@ -1,5 +1,6 @@
 /**
- *  Copyright 2014 Ryszard Wiśniewski <brut.alll@gmail.com>
+ *  Copyright (C) 2018 Ryszard Wiśniewski <brut.alll@gmail.com>
+ *  Copyright (C) 2018 Connor Tumbleson <connor.tumbleson@gmail.com>
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -13,7 +14,6 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package brut.apktool;
 
 import brut.androlib.*;
@@ -21,40 +21,27 @@ import brut.androlib.err.CantFindFrameworkResException;
 import brut.androlib.err.InFileNotFoundException;
 import brut.androlib.err.OutDirExistsException;
 import brut.common.BrutException;
+import brut.directory.DirectoryException;
+import org.apache.commons.cli.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.logging.*;
 
-import brut.directory.DirectoryException;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.OptionBuilder;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
-import org.apache.commons.cli.PosixParser;
-
 /**
  * @author Ryszard Wiśniewski <brut.alll@gmail.com>
  * @author Connor Tumbleson <connor.tumbleson@gmail.com>
+ * @author changye.zeng
  */
 public class Main {
     public static void main(String[] args) throws IOException, InterruptedException, BrutException {
-//        args = new String[] {
-//                "b",
-//                "-am",
-//                "config.txt",
-//                "app-Debug"
-//        };
 
         // set verbosity default
         Verbosity verbosity = Verbosity.NORMAL;
 
         // cli parser
-        CommandLineParser parser = new PosixParser();
-        CommandLine commandLine = null;
+        CommandLineParser parser = new DefaultParser();
+        CommandLine commandLine;
 
         // load options
         _Options();
@@ -63,7 +50,7 @@ public class Main {
             commandLine = parser.parse(allOptions, args, false);
         } catch (ParseException ex) {
             System.err.println(ex.getMessage());
-            usage(commandLine);
+            usage();
             return;
         }
 
@@ -80,7 +67,6 @@ public class Main {
             setAdvanceMode(true);
         }
 
-        // @todo use new ability of apache-commons-cli to check hasOption for non-prefixed items
         boolean cmdFound = false;
         for (String opt : commandLine.getArgs()) {
             if (opt.equalsIgnoreCase("d") || opt.equalsIgnoreCase("decode")) {
@@ -92,6 +78,9 @@ public class Main {
             } else if (opt.equalsIgnoreCase("if") || opt.equalsIgnoreCase("install-framework")) {
                 cmdInstallFramework(commandLine);
                 cmdFound = true;
+            } else if (opt.equalsIgnoreCase("empty-framework-dir")) {
+                cmdEmptyFrameworkDirectory(commandLine);
+                cmdFound = true;
             } else if (opt.equalsIgnoreCase("publicize-resources")) {
                 cmdPublicizeResources(commandLine);
                 cmdFound = true;
@@ -99,11 +88,12 @@ public class Main {
         }
 
         // if no commands ran, run the version / usage check.
-        if (cmdFound == false) {
-            if (commandLine.hasOption("version") || commandLine.hasOption("version")) {
+        if (!cmdFound) {
+            if (commandLine.hasOption("version")) {
                 _version();
+                System.exit(0);
             } else {
-                usage(commandLine);
+                usage();
             }
         }
     }
@@ -112,8 +102,8 @@ public class Main {
         ApkDecoder decoder = new ApkDecoder();
 
         int paraCount = cli.getArgList().size();
-        String apkName = (String) cli.getArgList().get(paraCount - 1);
-        File outDir = null;
+        String apkName = cli.getArgList().get(paraCount - 1);
+        File outDir;
 
         // check for options
         if (cli.hasOption("s") || cli.hasOption("no-src")) {
@@ -135,16 +125,11 @@ public class Main {
         if (cli.hasOption("r") || cli.hasOption("no-res")) {
             decoder.setDecodeResources(ApkDecoder.DECODE_RESOURCES_NONE);
         }
-        if (cli.hasOption("om") || cli.hasOption("only-manifest")) {
-            if (!cli.hasOption("r") && !cli.hasOption("no-res")) {
-                decoder.setDecodeManifestOnly(true);
-            } else {
-                System.err.println("you can not use only-manifest with no-res");
-                System.exit(1);
-            }
+        if (cli.hasOption("force-manifest")) {
+            decoder.setForceDecodeManifest(ApkDecoder.FORCE_DECODE_MANIFEST_FULL);
         }
-        if (cli.hasOption("na") || cli.hasOption("no-assets")) {
-            decoder.setDecodeAssets(false);
+        if (cli.hasOption("no-assets")) {
+            decoder.setDecodeAssets(ApkDecoder.DECODE_ASSETS_NONE);
         }
         if (cli.hasOption("k") || cli.hasOption("keep-broken-res")) {
             decoder.setKeepBrokenResources(true);
@@ -155,14 +140,13 @@ public class Main {
         if (cli.hasOption("m") || cli.hasOption("match-original")) {
             decoder.setAnalysisMode(true, false);
         }
-        if (cli.hasOption("api")) {
+        if (cli.hasOption("api") || cli.hasOption("api-level")) {
             decoder.setApi(Integer.parseInt(cli.getOptionValue("api")));
         }
         if (cli.hasOption("o") || cli.hasOption("output")) {
             outDir = new File(cli.getOptionValue("o"));
             decoder.setOutDir(outDir);
         } else {
-
             // make out folder manually using name of apk
             String outName = apkName;
             outName = outName.endsWith(".apk") ? outName.substring(0,
@@ -201,14 +185,17 @@ public class Main {
         } catch (DirectoryException ex) {
             System.err.println("Could not modify internal dex files. Please ensure you have permission.");
             System.exit(1);
+        } finally {
+            try {
+                decoder.close();
+            } catch (IOException ignored) {}
         }
-
     }
 
     private static void cmdBuild(CommandLine cli) throws BrutException {
         String[] args = cli.getArgs();
         String appDirName = args.length < 2 ? "." : args[1];
-        File outFile = null;
+        File outFile;
         ApkOptions apkOptions = new ApkOptions();
 
         // check for build options
@@ -216,18 +203,11 @@ public class Main {
             apkOptions.forceBuildAll = true;
         }
         if (cli.hasOption("d") || cli.hasOption("debug")) {
-            System.err.println("SmaliDebugging has been removed in 2.1.0 onward. Please see: https://github.com/iBotPeaches/Apktool/issues/1061");
-            System.exit(1);
+            System.out.println("SmaliDebugging has been removed in 2.1.0 onward. Please see: https://github.com/iBotPeaches/Apktool/issues/1061");
+            apkOptions.debugMode = true;
         }
         if (cli.hasOption("v") || cli.hasOption("verbose")) {
             apkOptions.verbose = true;
-        }
-        if (cli.hasOption("na") || cli.hasOption("no-assets")) {
-            apkOptions.noAssets = true;
-        }
-        if (cli.hasOption("am") || cli.hasOption("auto-multidex")) {
-            apkOptions.autoMultiDex = true;
-            apkOptions.mainDexConfig = cli.getOptionValue("am");
         }
         if (cli.hasOption("a") || cli.hasOption("aapt")) {
             apkOptions.aaptPath = cli.getOptionValue("a");
@@ -237,6 +217,10 @@ public class Main {
         }
         if (cli.hasOption("p") || cli.hasOption("frame-path")) {
             apkOptions.frameworkFolderLocation = cli.getOptionValue("p");
+        }
+        if (cli.hasOption("am") || cli.hasOption("auto-multidex")) {
+            apkOptions.autoMultiDex = true;
+            apkOptions.mainDexConfig = cli.getOptionValue("am");
         }
         if (cli.hasOption("u") || cli.hasOption("update")) {
             apkOptions.updateFiles = true;
@@ -251,10 +235,9 @@ public class Main {
         new Androlib(apkOptions).build(new File(appDirName), outFile);
     }
 
-    private static void cmdInstallFramework(CommandLine cli)
-            throws AndrolibException {
+    private static void cmdInstallFramework(CommandLine cli) throws AndrolibException {
         int paraCount = cli.getArgList().size();
-        String apkName = (String) cli.getArgList().get(paraCount - 1);
+        String apkName = cli.getArgList().get(paraCount - 1);
 
         ApkOptions apkOptions = new ApkOptions();
         if (cli.hasOption("p") || cli.hasOption("frame-path")) {
@@ -266,12 +249,24 @@ public class Main {
         new Androlib(apkOptions).installFramework(new File(apkName));
     }
 
-    private static void cmdPublicizeResources(CommandLine cli)
-            throws AndrolibException {
+    private static void cmdPublicizeResources(CommandLine cli) throws AndrolibException {
         int paraCount = cli.getArgList().size();
-        String apkName = (String) cli.getArgList().get(paraCount - 1);
+        String apkName = cli.getArgList().get(paraCount - 1);
 
         new Androlib().publicizeResources(new File(apkName));
+    }
+
+    private static void cmdEmptyFrameworkDirectory(CommandLine cli) throws AndrolibException {
+        ApkOptions apkOptions = new ApkOptions();
+
+        if (cli.hasOption("f") || cli.hasOption("force")) {
+            apkOptions.forceDeleteFramework = true;
+        }
+        if (cli.hasOption("p") || cli.hasOption("frame-path")) {
+            apkOptions.frameworkFolderLocation = cli.getOptionValue("p");
+        }
+
+        new Androlib(apkOptions).emptyFrameworkDirectory();
     }
 
     private static void _version() {
@@ -282,135 +277,162 @@ public class Main {
     private static void _Options() {
 
         // create options
-        Option versionOption = OptionBuilder.withLongOpt("version")
-                .withDescription("prints the version then exits")
-                .create("version");
+        Option versionOption = Option.builder("version")
+                .longOpt("version")
+                .desc("prints the version then exits")
+                .build();
 
-        Option manifestOption = OptionBuilder.withLongOpt("only-manifest")
-                .withDescription("Only decode the manifest file")
-                .create("om");
+        Option advanceOption = Option.builder("advance")
+                .longOpt("advanced")
+                .desc("prints advance information.")
+                .build();
 
-        Option assetsOption = OptionBuilder.withLongOpt("no-assets")
-                .withDescription("Do not decode assets")
-                .create("na");
+        Option noSrcOption = Option.builder("s")
+                .longOpt("no-src")
+                .desc("Do not decode sources.")
+                .build();
 
-        Option autoMultiDexOption = OptionBuilder.withLongOpt("auto-multidex")
-                .withDescription("Build multidex automatically when over 64k methods. Please Configure mainDex smali in <file>")
+        Option noResOption = Option.builder("r")
+                .longOpt("no-res")
+                .desc("Do not decode resources.")
+                .build();
+
+        Option forceManOption = Option.builder()
+                .longOpt("force-manifest")
+                .desc("Decode the APK's compiled manifest, even if decoding of resources is set to \"false\".")
+                .build();
+
+        Option noAssetOption = Option.builder()
+                .longOpt("no-assets")
+                .desc("Do not decode assets.")
+                .build();
+
+        Option debugDecOption = Option.builder("d")
+                .longOpt("debug")
+                .desc("REMOVED (DOES NOT WORK): Decode in debug mode.")
+                .build();
+
+        Option analysisOption = Option.builder("m")
+                .longOpt("match-original")
+                .desc("Keeps files to closest to original as possible. Prevents rebuild.")
+                .build();
+
+        Option apiLevelOption = Option.builder("api")
+                .longOpt("api-level")
+                .desc("The numeric api-level of the file to generate, e.g. 14 for ICS.")
                 .hasArg(true)
-                .withArgName("file")
-                .create("am");
+                .argName("API")
+                .build();
 
-        Option advanceOption = OptionBuilder.withLongOpt("advanced")
-                .withDescription("prints advance information.")
-                .create("advance");
+        Option debugBuiOption = Option.builder("d")
+                .longOpt("debug")
+                .desc("Sets android:debuggable to \"true\" in the APK's compiled manifest")
+                .build();
 
-        Option noSrcOption = OptionBuilder.withLongOpt("no-src")
-                .withDescription("Do not decode sources.")
-                .create("s");
+        Option noDbgOption = Option.builder("b")
+                .longOpt("no-debug-info")
+                .desc("don't write out debug info (.local, .param, .line, etc.)")
+                .build();
 
-        Option noResOption = OptionBuilder.withLongOpt("no-res")
-                .withDescription("Do not decode resources.")
-                .create("r");
+        Option forceDecOption = Option.builder("f")
+                .longOpt("force")
+                .desc("Force delete destination directory.")
+                .build();
 
-        Option debugDecOption = OptionBuilder.withLongOpt("debug")
-                .withDescription("REMOVED (DOES NOT WORK): Decode in debug mode.")
-                .create("d");
-
-        Option analysisOption = OptionBuilder.withLongOpt("match-original")
-                .withDescription("Keeps files to closest to original as possible. Prevents rebuild.")
-                .create("m");
-
-        Option apiLevelOption = OptionBuilder.withLongOpt("api")
-                .withDescription("The numeric api-level of the file to generate, e.g. 14 for ICS.")
+        Option frameTagOption = Option.builder("t")
+                .longOpt("frame-tag")
+                .desc("Uses framework files tagged by <tag>.")
                 .hasArg(true)
-                .withArgName("API")
-                .create();
+                .argName("tag")
+                .build();
 
-        Option debugBuiOption = OptionBuilder.withLongOpt("debug")
-                .withDescription("Builds in debug mode. Check project page for more info.")
-                .create("d");
-
-        Option noDbgOption = OptionBuilder.withLongOpt("no-debug-info")
-                .withDescription("don't write out debug info (.local, .param, .line, etc.)")
-                .create("b");
-
-        Option forceDecOption = OptionBuilder.withLongOpt("force")
-                .withDescription("Force delete destination directory.")
-                .create("f");
-
-        Option frameTagOption = OptionBuilder.withLongOpt("frame-tag")
-                .withDescription("Uses framework files tagged by <tag>.")
+        Option frameDirOption = Option.builder("p")
+                .longOpt("frame-path")
+                .desc("Uses framework files located in <dir>.")
                 .hasArg(true)
-                .withArgName("tag")
-                .create("t");
+                .argName("dir")
+                .build();
 
-        Option frameDirOption = OptionBuilder.withLongOpt("frame-path")
-                .withDescription("Uses framework files located in <dir>.")
+        Option frameIfDirOption = Option.builder("p")
+                .longOpt("frame-path")
+                .desc("Stores framework files into <dir>.")
                 .hasArg(true)
-                .withArgName("dir")
-                .create("p");
+                .argName("dir")
+                .build();
 
-        Option frameIfDirOption = OptionBuilder.withLongOpt("frame-path")
-                .withDescription("Stores framework files into <dir>.")
-                .hasArg(true)
-                .withArgName("dir")
-                .create("p");
-
-        Option keepResOption = OptionBuilder.withLongOpt("keep-broken-res")
-                .withDescription("Use if there was an error and some resources were dropped, e.g.\n"
+        Option keepResOption = Option.builder("k")
+                .longOpt("keep-broken-res")
+                .desc("Use if there was an error and some resources were dropped, e.g.\n"
                         + "            \"Invalid config flags detected. Dropping resources\", but you\n"
                         + "            want to decode them anyway, even with errors. You will have to\n"
                         + "            fix them manually before building.")
-                .create("k");
+                .build();
 
-        Option forceBuiOption = OptionBuilder.withLongOpt("force-all")
-                .withDescription("Skip changes detection and build all files.")
-                .create("f");
+        Option forceBuiOption = Option.builder("f")
+                .longOpt("force-all")
+                .desc("Skip changes detection and build all files.")
+                .build();
 
-        Option aaptOption = OptionBuilder.withLongOpt("aapt")
+        Option aaptOption = Option.builder("a")
+                .longOpt("aapt")
                 .hasArg(true)
-                .withArgName("loc")
-                .withDescription("Loads aapt from specified location.")
-                .create("a");
+                .argName("loc")
+                .desc("Loads aapt from specified location.")
+                .build();
 
-        Option originalOption = OptionBuilder.withLongOpt("copy-original")
-                .withDescription("Copies original AndroidManifest.xml and META-INF. See project page for more info.")
-                .create("c");
+        Option originalOption = Option.builder("c")
+                .longOpt("copy-original")
+                .desc("Copies original AndroidManifest.xml and META-INF. See project page for more info.")
+                .build();
 
-        Option tagOption = OptionBuilder.withLongOpt("tag")
-                .withDescription("Tag frameworks using <tag>.")
+        Option tagOption = Option.builder("t")
+                .longOpt("tag")
+                .desc("Tag frameworks using <tag>.")
                 .hasArg(true)
-                .withArgName("tag")
-                .create("t");
+                .argName("tag")
+                .build();
 
-        Option outputBuiOption = OptionBuilder.withLongOpt("output")
-                .withDescription("The name of apk that gets written. Default is dist/name.apk")
+        Option outputBuiOption = Option.builder("o")
+                .longOpt("output")
+                .desc("The name of apk that gets written. Default is dist/name.apk")
                 .hasArg(true)
-                .withArgName("dir")
-                .create("o");
+                .argName("dir")
+                .build();
 
-        Option outputDecOption = OptionBuilder.withLongOpt("output")
-                .withDescription("The name of folder that gets written. Default is apk.out")
+        Option outputDecOption = Option.builder("o")
+                .longOpt("output")
+                .desc("The name of folder that gets written. Default is apk.out")
                 .hasArg(true)
-                .withArgName("dir")
-                .create("o");
+                .argName("dir")
+                .build();
 
-        Option quietOption = OptionBuilder.withLongOpt("quiet")
-                .create("q");
+        Option quietOption = Option.builder("q")
+                .longOpt("quiet")
+                .build();
 
-        Option verboseOption = OptionBuilder.withLongOpt("verbose")
-                .create("v");
+        Option verboseOption = Option.builder("v")
+                .longOpt("verbose")
+                .build();
 
-        Option updateOption = OptionBuilder.withLongOpt("update")
-                .create("u");
+        Option autoMultiDexOption = Option.builder("am")
+                .longOpt("auto-multidex")
+                .desc("Build multidex automatically when over 64k methods. Please Configure mainDex smali in <file>")
+                .hasArg(true)
+                .argName("file")
+                .build();
+
+        Option updateOption = Option.builder("u")
+                .longOpt("update")
+                .build();
 
         // check for advance mode
         if (isAdvanceMode()) {
-            DecodeOptions.addOption(debugDecOption);
             DecodeOptions.addOption(noDbgOption);
             DecodeOptions.addOption(keepResOption);
             DecodeOptions.addOption(analysisOption);
             DecodeOptions.addOption(apiLevelOption);
+            DecodeOptions.addOption(noAssetOption);
+            DecodeOptions.addOption(forceManOption);
 
             BuildOptions.addOption(debugBuiOption);
             BuildOptions.addOption(aaptOption);
@@ -428,8 +450,6 @@ public class Main {
         DecodeOptions.addOption(forceDecOption);
         DecodeOptions.addOption(noSrcOption);
         DecodeOptions.addOption(noResOption);
-        DecodeOptions.addOption(manifestOption);
-        DecodeOptions.addOption(assetsOption);
 
         // add basic build options
         BuildOptions.addOption(outputBuiOption);
@@ -441,6 +461,10 @@ public class Main {
         // add basic framework options
         frameOptions.addOption(tagOption);
         frameOptions.addOption(frameIfDirOption);
+
+        // add empty framework options
+        emptyFrameworkOptions.addOption(forceDecOption);
+        emptyFrameworkOptions.addOption(frameIfDirOption);
 
         // add all, loop existing cats then manually add advance
         for (Object op : normalOptions.getOptions()) {
@@ -455,9 +479,12 @@ public class Main {
         for (Object op : frameOptions.getOptions()) {
             allOptions.addOption((Option)op);
         }
+        allOptions.addOption(apiLevelOption);
         allOptions.addOption(analysisOption);
         allOptions.addOption(debugDecOption);
         allOptions.addOption(noDbgOption);
+        allOptions.addOption(forceManOption);
+        allOptions.addOption(noAssetOption);
         allOptions.addOption(keepResOption);
         allOptions.addOption(debugBuiOption);
         allOptions.addOption(aaptOption);
@@ -474,9 +501,7 @@ public class Main {
         }
     }
 
-    private static void usage(CommandLine commandLine) {
-
-        // load basicOptions
+    private static void usage() {
         _Options();
         HelpFormatter formatter = new HelpFormatter();
         formatter.setWidth(120);
@@ -500,8 +525,9 @@ public class Main {
         formatter.printHelp("apktool " + verbosityHelp() + "d[ecode] [options] <file_apk>", DecodeOptions);
         formatter.printHelp("apktool " + verbosityHelp() + "b[uild] [options] <app_path>", BuildOptions);
         if (isAdvanceMode()) {
-            formatter.printHelp("apktool " + verbosityHelp() + "publicize-resources <file_path>",
-                    "Make all framework resources public.", emptyOptions, null);
+            formatter.printHelp("apktool " + verbosityHelp() + "publicize-resources <file_path>", emptyOptions);
+            formatter.printHelp("apktool " + verbosityHelp() + "empty-framework-dir [options]", emptyFrameworkOptions);
+            System.out.println("");
         } else {
             System.out.println("");
         }
@@ -512,7 +538,7 @@ public class Main {
                         + "For smali/baksmali info, see: https://github.com/JesusFreke/smali");
     }
 
-    private static void setupLogging(Verbosity verbosity) {
+    private static void setupLogging(final Verbosity verbosity) {
         Logger logger = Logger.getLogger("");
         for (Handler handler : logger.getHandlers()) {
             logger.removeHandler(handler);
@@ -535,7 +561,13 @@ public class Main {
                     if (record.getLevel().intValue() >= Level.WARNING.intValue()) {
                         System.err.write(message.getBytes());
                     } else {
-                        System.out.write(message.getBytes());
+                        if (record.getLevel().intValue() >= Level.INFO.intValue()) {
+                            System.out.write(message.getBytes());
+                        } else {
+                            if (verbosity == Verbosity.VERBOSE) {
+                                System.out.write(message.getBytes());
+                            }
+                        }
                     }
                 } catch (Exception exception) {
                     reportError(null, exception, ErrorManager.FORMAT_FAILURE);
@@ -564,16 +596,16 @@ public class Main {
         }
     }
 
-    public static boolean isAdvanceMode() {
+    private static boolean isAdvanceMode() {
         return advanceMode;
     }
 
-    public static void setAdvanceMode(boolean advanceMode) {
+    private static void setAdvanceMode(boolean advanceMode) {
         Main.advanceMode = advanceMode;
     }
 
-    private static enum Verbosity {
-        NORMAL, VERBOSE, QUIET;
+    private enum Verbosity {
+        NORMAL, VERBOSE, QUIET
     }
 
     private static boolean advanceMode = false;
@@ -584,6 +616,7 @@ public class Main {
     private final static Options frameOptions;
     private final static Options allOptions;
     private final static Options emptyOptions;
+    private final static Options emptyFrameworkOptions;
 
     static {
         //normal and advance usage output
@@ -593,5 +626,6 @@ public class Main {
         frameOptions = new Options();
         allOptions = new Options();
         emptyOptions = new Options();
+        emptyFrameworkOptions = new Options();
     }
 }

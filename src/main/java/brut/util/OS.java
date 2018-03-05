@@ -1,5 +1,6 @@
 /**
- *  Copyright 2014 Ryszard Wiśniewski <brut.alll@gmail.com>
+ *  Copyright (C) 2018 Ryszard Wiśniewski <brut.alll@gmail.com>
+ *  Copyright (C) 2018 Connor Tumbleson <connor.tumbleson@gmail.com>
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -13,16 +14,15 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-
 package brut.util;
 
 import brut.common.BrutException;
-import org.apache.commons.io.IOUtils;
-
 import java.io.*;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.logging.Logger;
+
+import org.apache.commons.io.IOUtils;
 
 /**
  * @author Ryszard Wiśniewski <brut.alll@gmail.com>
@@ -46,10 +46,10 @@ public class OS {
         }
         dir.delete();
     }
-        
+
     public static void rmfile(String file) throws BrutException {
-    	File del = new File(file);
-    	del.delete();
+        File del = new File(file);
+        del.delete();
     }
 
     public static void rmdir(String dir) throws BrutException {
@@ -62,7 +62,7 @@ public class OS {
         for (int i = 0; i < files.length; i++) {
             File file = files[i];
             File destFile = new File(dest.getPath() + File.separatorChar
-                + file.getName());
+                    + file.getName());
             if (file.isDirectory()) {
                 cpdir(file, destFile);
                 continue;
